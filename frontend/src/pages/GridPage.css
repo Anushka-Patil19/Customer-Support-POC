@@ -1,0 +1,177 @@
+.grid-page {
+  padding: 0 24px 80px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.grid-card {
+  margin-top: 16px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.grid-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #f8f7fc;
+  border-bottom: 1px solid var(--border);
+}
+
+.grid-toolbar-title {
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+
+.grid-toolbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.grid-toolbar-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.grid-toolbar-btn:hover {
+  background: var(--purple-50);
+  border-color: var(--purple-100);
+}
+
+.grid-toolbar-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.grid-table-wrap {
+  overflow-x: auto;
+}
+
+.grid-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.grid-table th {
+  text-align: left;
+  padding: 10px 14px;
+  background: #fafafa;
+  border-bottom: 1px solid var(--border);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.grid-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.grid-table tbody tr {
+  cursor: pointer;
+}
+
+.grid-table tbody tr:hover {
+  background: var(--purple-50);
+}
+
+.grid-table tbody tr.grid-row--selected {
+  background: var(--purple-100);
+}
+
+.grid-required {
+  color: #dc2626;
+  margin-left: 2px;
+}
+
+.grid-inactive {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.grid-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #f8f7fc;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.grid-insert-row td {
+  background: var(--purple-50);
+}
+
+.grid-insert-row input,
+.grid-insert-row select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.grid-banner {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.grid-banner--error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.grid-banner--info {
+  background: var(--purple-50);
+  color: var(--purple-700);
+  border: 1px solid var(--purple-100);
+}
+
+.grid-field-row {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  padding: 14px 16px;
+  flex-wrap: wrap;
+}
+
+.grid-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.grid-field label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.grid-field input,
+.grid-field select {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 13px;
+  min-width: 160px;
+}

@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: banner-ar-poc-backend
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+    healthCheckPath: /
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: DB_URL
+        value: sqlite:////data/banner_ar.db
+      - key: FRONTEND_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PYTHON_VERSION
+        value: 3.12.4
+    disk:
+      name: banner-ar-data
+      mountPath: /data
+      sizeGB: 1
