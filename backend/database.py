@@ -11,7 +11,12 @@ IS_SQLITE = Config.DB_URL.startswith("sqlite")
 connect_args = (
     {"check_same_thread": False} if IS_SQLITE else {"options": f"-csearch_path={Config.DB_SCHEMA}"}
 )
-engine = create_engine(Config.DB_URL, connect_args=connect_args)
+engine = create_engine(
+    Config.DB_URL,
+    connect_args=connect_args,
+    pool_pre_ping=True,
+    pool_recycle=280,
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
