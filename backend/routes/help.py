@@ -12,7 +12,7 @@ from utils.entity_detect import detect_entities
 from utils.help_kb import hybrid_search
 
 _groq = Groq(api_key=Config.GROQ_API_KEY)
-_MODEL = "llama-3.3-70b-versatile"
+_MODEL = "openai/gpt-oss-120b"
 help_bp = Blueprint("help", __name__)
 
 _RATE_LIMIT_MESSAGE = "The Deep Dive assistant has hit its usage limit for the next few minutes -- please try again shortly."
