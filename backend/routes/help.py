@@ -37,9 +37,18 @@ def _call_groq(system_instruction, input_text, json_mode=False):
     try:
         completion = _groq.chat.completions.create(**kwargs)
         return completion.choices[0].message.content, None
-    except RateLimitError:
+    except RateLimitError as e:
+        print(
+            f"\n[GROQ RATE LIMIT] Groq API quota/rate limit exhausted -- "
+            f"status={getattr(e, 'status_code', '?')} message={getattr(e, 'message', str(e))}\n",
+            flush=True,
+        )
         return None, _RATE_LIMIT_MESSAGE
-    except APIError:
+    except APIError as e:
+        print(
+            f"\n[GROQ API ERROR] status={getattr(e, 'status_code', '?')} message={getattr(e, 'message', str(e))}\n",
+            flush=True,
+        )
         return None, _UPSTREAM_ERROR_MESSAGE
 
 
