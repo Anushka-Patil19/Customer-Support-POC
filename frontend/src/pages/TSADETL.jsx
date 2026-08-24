@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import * as XLSX from "xlsx";
 import api from "../api/axios";
 import BarDeepDiveOverlay from "../components/BarDeepDiveOverlay";
 import { PageTitle } from "../components/HelpPOCHeader";
@@ -9,6 +10,7 @@ const TABS = ["Charges/Payments", "Deposits", "Memos"];
 
 export default function TSADETL() {
   const containerRef = useRef(null);
+  const idFieldRef = useRef(null);
   const [idInput, setIdInput] = useState("D00010001");
   const [person, setPerson] = useState(null);
   const [personError, setPersonError] = useState(null);
@@ -68,6 +70,20 @@ export default function TSADETL() {
     if (idInput.trim()) loadAccount(idInput.trim().toUpperCase());
   };
 
+  const handleDownloadReport = () => {
+    const rows = transactions.map((t) => ({
+      "Detail Code": t.detail_code,
+      "Detail Code Description": t.detail_code_description,
+      Amount: t.entry_amount,
+      Balance: t.open_balance,
+      Term: t.term_code,
+    }));
+    const sheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, "Charges-Payments");
+    XLSX.writeFile(workbook, `TSADETL_${person.banner_id}_Report.xlsx`);
+  };
+
   const handleInsert = async (e) => {
     e.preventDefault();
     setBanner(null);
@@ -92,7 +108,7 @@ export default function TSADETL() {
 
       <div className="grid-card">
         <form className="grid-field-row" onSubmit={handleIdSubmit}>
-          <div className="grid-field">
+          <div className="grid-field" ref={idFieldRef}>
             <label>ID</label>
             <input value={idInput} onChange={(e) => setIdInput(e.target.value.toUpperCase())} placeholder="D00010001" />
           </div>
@@ -221,7 +237,12 @@ export default function TSADETL() {
         </div>
       </div>
 
-      <BarDeepDiveOverlay containerRef={containerRef} context={person ? { banner_id: person.banner_id } : undefined} />
+      <BarDeepDiveOverlay
+        containerRef={containerRef}
+        context={person ? { banner_id: person.banner_id } : undefined}
+        onDownloadReport={person && transactions.length > 0 ? handleDownloadReport : undefined}
+        reportTriggerRef={idFieldRef}
+      />
     </div>
   );
 }

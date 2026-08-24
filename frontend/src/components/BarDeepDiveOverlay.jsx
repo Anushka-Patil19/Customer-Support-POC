@@ -34,6 +34,10 @@ function stripFromDrag(start, current) {
   };
 }
 
+function rectsIntersect(a, b) {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
 function extractTextInRect(containerEl, rect) {
   if (!containerEl) return "";
   const all = containerEl.querySelectorAll("*");
@@ -82,7 +86,7 @@ function extractTextInRect(containerEl, rect) {
  * vague follow-up like "what's my balance" resolves against the right
  * account even when the ID isn't typed or selected in the text itself.
  */
-export default function BarDeepDiveOverlay({ containerRef, context }) {
+export default function BarDeepDiveOverlay({ containerRef, context, onDownloadReport, reportTriggerRef }) {
   const [armed, setArmed] = useState(false);
   const [rect, setRect] = useState(null);
   const [panel, setPanel] = useState(null); // { width, loading, explanation, sections, followUpQuestions, error }
@@ -190,6 +194,12 @@ export default function BarDeepDiveOverlay({ containerRef, context }) {
         top: finalRect.bottom + 8,
       });
 
+      // Download Report only makes sense when the selection was actually
+      // over the ID field -- selecting elsewhere on the page (grid rows,
+      // balance, etc.) still explains normally but won't offer the report.
+      const triggerEl = reportTriggerRef?.current;
+      const showDownloadReport = !!(triggerEl && rectsIntersect(finalRect, triggerEl.getBoundingClientRect()));
+
       const text = extractTextInRect(container, finalRect);
       if (!text) {
         setPanel({
@@ -200,12 +210,13 @@ export default function BarDeepDiveOverlay({ containerRef, context }) {
           images: [],
           followUpQuestions: [],
           debug: null,
+          showDownloadReport,
           error: "Nothing selectable was found in that area -- try dragging over some text, a field, or a grid row.",
         });
         return;
       }
 
-      setPanel({ width: panelWidth, loading: true, explanation: "", sections: [], images: [], followUpQuestions: [], debug: null, error: null });
+      setPanel({ width: panelWidth, loading: true, explanation: "", sections: [], images: [], followUpQuestions: [], debug: null, showDownloadReport, error: null });
 
       try {
         const { data } = await api.post("/help/explain", { text, context });
@@ -217,11 +228,12 @@ export default function BarDeepDiveOverlay({ containerRef, context }) {
           images: data.images || [],
           followUpQuestions: data.follow_up_questions || [],
           debug: data.debug || null,
+          showDownloadReport,
           error: null,
         });
       } catch (err) {
         const message = err?.response?.data?.error || "Couldn't get an explanation right now.";
-        setPanel({ width: panelWidth, loading: false, explanation: "", sections: [], images: [], followUpQuestions: [], debug: null, error: message });
+        setPanel({ width: panelWidth, loading: false, explanation: "", sections: [], images: [], followUpQuestions: [], debug: null, showDownloadReport, error: message });
       }
     };
 
@@ -319,7 +331,19 @@ export default function BarDeepDiveOverlay({ containerRef, context }) {
                     <p>{panel.explanation}</p>
                   </div>
                   <ReferenceImages images={panel.images} />
-                  <DebugLogLink debug={panel.debug} />
+                  <div className="bar-log-actions-row">
+                    <DebugLogLink debug={panel.debug} />
+                    {onDownloadReport && panel.showDownloadReport && (
+                      <button
+                        type="button"
+                        className="bar-download-report-btn"
+                        onClick={onDownloadReport}
+                        title="Download this student's transactions as an Excel report"
+                      >
+                        ⬇ Download Report
+                      </button>
+                    )}
+                  </div>
                   {panel.followUpQuestions.length > 0 && (
                     <div className="bar-followup-row">
                       {panel.followUpQuestions.map((q, i) => (
