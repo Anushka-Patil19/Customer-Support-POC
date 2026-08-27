@@ -53,8 +53,9 @@
   padding: 10px 14px;
   background: linear-gradient(90deg, var(--purple-700), var(--purple-600));
   color: #fff;
-  cursor: move;
   flex-shrink: 0;
+  cursor: move;
+  user-select: none;
 }
 
 .bar-explain-panel-title {

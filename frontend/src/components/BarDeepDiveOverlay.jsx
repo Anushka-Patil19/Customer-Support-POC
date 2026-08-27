@@ -3,9 +3,9 @@ import api, { API_ORIGIN } from "../api/axios";
 import "./BarDeepDiveOverlay.css";
 
 const MIN_RECT_PX = 10;
-const MIN_STRIP_HEIGHT = 56;
+const MIN_STRIP_HEIGHT = 22; // just a hair taller than a single line of UI text
 const VERTICAL_DEAD_ZONE = 20; // small vertical wobble below this is ignored
-const VERTICAL_PADDING = 12; // breathing room once a real vertical drag is detected
+const VERTICAL_PADDING = 3; // breathing room once a real vertical drag is detected
 const VIEWPORT_MARGIN = 16;
 const CHAT_PANEL_WIDTH = 400;
 
@@ -38,6 +38,18 @@ function rectsIntersect(a, b) {
   return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
 }
 
+// An element's own text, ignoring text that belongs to nested elements --
+// e.g. for <th>Detail Code<span>*</span></th> this returns "Detail Code",
+// not "Detail Code*" (the "*" is picked up separately when the span itself
+// is visited in extractTextInRect's traversal).
+function ownText(el) {
+  let text = "";
+  for (const node of el.childNodes) {
+    if (node.nodeType === Node.TEXT_NODE) text += node.textContent;
+  }
+  return text.trim();
+}
+
 function extractTextInRect(containerEl, rect) {
   if (!containerEl) return "";
   const all = containerEl.querySelectorAll("*");
@@ -49,26 +61,54 @@ function extractTextInRect(containerEl, rect) {
     if (!intersects) continue;
 
     // Icon-only controls have no text nodes at all -- their meaning lives in
-    // aria-label/title/alt instead, so always pull that in regardless of
-    // child overlap below.
+    // aria-label/title/alt instead, so always pull that in.
     const label = (el.getAttribute("aria-label") || el.getAttribute("title") || el.getAttribute("alt") || "").trim();
     if (label) matches.push(label);
 
-    let hasMatchingChild = false;
-    for (const child of el.children) {
-      const cr = child.getBoundingClientRect();
-      if (cr.width === 0 || cr.height === 0) continue;
-      if (cr.left < rect.right && cr.right > rect.left && cr.top < rect.bottom && cr.bottom > rect.top) {
-        hasMatchingChild = true;
-        break;
-      }
-    }
-    if (hasMatchingChild) continue;
-
-    const txt = (el.textContent || "").trim();
+    // Each matching element contributes only its OWN direct text -- nested
+    // elements (e.g. a required-field "*" marker) are visited separately in
+    // this same traversal, so using full textContent here would either lose
+    // the parent's inline text (when a sibling text node sits next to a
+    // matched child, as with the "*" markers above) or duplicate descendant
+    // text at every ancestor level.
+    const txt = ownText(el);
     if (txt) matches.push(txt);
   }
   return [...new Set(matches)].join("\n").slice(0, 4000);
+}
+
+// Page headings/labels (grid column headers, field labels) are rendered
+// bold via CSS font-weight rather than a <b>/<strong> tag, so we can't just
+// mirror the DOM -- instead we collect the text of everything bold on the
+// page once per explain, and re-bold those same words wherever they show up
+// inside the answer text.
+const BOLD_FONT_WEIGHT = 600;
+
+function collectBoldTerms(containerEl) {
+  const seen = new Set();
+  const terms = [];
+  for (const el of containerEl.querySelectorAll("*")) {
+    const weight = parseInt(window.getComputedStyle(el).fontWeight, 10);
+    if (Number.isNaN(weight) || weight < BOLD_FONT_WEIGHT) continue;
+    const text = ownText(el);
+    if (text.length < 2 || !/[a-zA-Z]/.test(text)) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    terms.push(text);
+  }
+  return terms.sort((a, b) => b.length - a.length);
+}
+
+// Renders `text` as plain strings interleaved with <strong> for any
+// substring that exactly matches one of the page's bold terms (longest
+// terms win at a given position, so "Detail Code Description" is matched
+// whole rather than as "Detail Code" + "Description").
+function boldenKnownTerms(text, terms) {
+  if (!text || terms.length === 0) return text;
+  const escaped = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const pattern = new RegExp(`\\b(${escaped.join("|")})\\b`, "gi");
+  return text.split(pattern).map((part, i) => (i % 2 === 1 ? <strong key={i}>{part}</strong> : part));
 }
 
 /**
@@ -78,9 +118,8 @@ function extractTextInRect(containerEl, rect) {
  * fires a grounded explanation for whatever text was under it and disarms.
  * When not armed, normal clicks/scrolling are completely untouched.
  *
- * The result panel can be dragged by its header to anywhere on screen, and
- * auto-shifts itself upward if its content grows past the bottom of the
- * viewport (e.g. after follow-up chips + an answer are added).
+ * The result panel stays anchored near the selected area and auto-shifts
+ * itself upward if its content grows past the bottom of the viewport.
  * `context` (optional) tells the backend what's currently on screen -- e.g.
  * { banner_id: "D00010001" } when TSADETL has that student loaded -- so a
  * vague follow-up like "what's my balance" resolves against the right
@@ -100,6 +139,7 @@ export default function BarDeepDiveOverlay({ containerRef, context, onDownloadRe
   const followupAnswerRef = useRef(null);
   const panelRef = useRef(null);
   const panelDragRef = useRef(null);
+  const boldTermsRef = useRef([]);
 
   useEffect(() => {
     armedRef.current = armed;
@@ -133,23 +173,6 @@ export default function BarDeepDiveOverlay({ containerRef, context, onDownloadRe
       setPanelPos((p) => (p ? { ...p, top: maxTop } : p));
     }
   }, [panel, panelPos, followups]);
-
-  useEffect(() => {
-    const onMove = (e) => {
-      if (!panelDragRef.current) return;
-      const { startX, startY, origLeft, origTop } = panelDragRef.current;
-      setPanelPos({ left: origLeft + (e.clientX - startX), top: origTop + (e.clientY - startY) });
-    };
-    const onUp = () => {
-      panelDragRef.current = null;
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -200,6 +223,7 @@ export default function BarDeepDiveOverlay({ containerRef, context, onDownloadRe
       const triggerEl = reportTriggerRef?.current;
       const showDownloadReport = !!(triggerEl && rectsIntersect(finalRect, triggerEl.getBoundingClientRect()));
 
+      boldTermsRef.current = collectBoldTerms(container);
       const text = extractTextInRect(container, finalRect);
       if (!text) {
         setPanel({
@@ -276,18 +300,39 @@ export default function BarDeepDiveOverlay({ containerRef, context, onDownloadRe
     handleFollowupClick(question);
   };
 
+  // Drag-to-move: mousedown on the panel header repositions the whole panel
+  // as the mouse moves, independent of the selection rect / page scroll --
+  // it only ever touches panelPos, never `rect` or window scroll position.
+  const handlePanelHeaderMouseDown = (e) => {
+    if (e.button !== 0 || !panelPos) return;
+    e.preventDefault();
+    panelDragRef.current = { startX: e.clientX, startY: e.clientY, origLeft: panelPos.left, origTop: panelPos.top };
+
+    const onMove = (ev) => {
+      const drag = panelDragRef.current;
+      if (!drag) return;
+      const bounds = panelRef.current?.getBoundingClientRect();
+      const w = bounds?.width || panel?.width || CHAT_PANEL_WIDTH;
+      const h = bounds?.height || 0;
+      const left = Math.min(Math.max(drag.origLeft + (ev.clientX - drag.startX), -w + 60), window.innerWidth - 60);
+      const top = Math.min(Math.max(drag.origTop + (ev.clientY - drag.startY), 0), Math.max(0, window.innerHeight - Math.min(h, 40)));
+      setPanelPos({ left, top });
+    };
+    const onUp = () => {
+      panelDragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   const closePanel = () => {
     setPanel(null);
     setPanelPos(null);
     setRect(null);
     setFollowups([]);
     setCustomQuestion("");
-  };
-
-  const startPanelDrag = (e) => {
-    if (e.button !== 0 || !panelPos) return;
-    e.preventDefault();
-    panelDragRef.current = { startX: e.clientX, startY: e.clientY, origLeft: panelPos.left, origTop: panelPos.top };
   };
 
   return (
@@ -315,7 +360,7 @@ export default function BarDeepDiveOverlay({ containerRef, context, onDownloadRe
           className="bar-explain-panel"
           style={{ left: panelPos.left, top: panelPos.top, width: panel.width }}
         >
-          <div className="bar-explain-panel-head" onMouseDown={startPanelDrag} title="Drag to move">
+          <div className="bar-explain-panel-head" onMouseDown={handlePanelHeaderMouseDown}>
             <span className="bar-explain-panel-title">Deep Dive</span>
             <button className="bar-explain-panel-close" onMouseDown={(e) => e.stopPropagation()} onClick={closePanel}>×</button>
           </div>
@@ -328,7 +373,7 @@ export default function BarDeepDiveOverlay({ containerRef, context, onDownloadRe
               ) : (
                 <>
                   <div className="bar-chat-answer bar-chat-answer--first">
-                    <p>{panel.explanation}</p>
+                    <p>{boldenKnownTerms(panel.explanation, boldTermsRef.current)}</p>
                   </div>
                   <ReferenceImages images={panel.images} />
                   <div className="bar-log-actions-row">
@@ -372,7 +417,7 @@ export default function BarDeepDiveOverlay({ containerRef, context, onDownloadRe
                           <span className="bar-explain-error">{f.error}</span>
                         ) : (
                           <>
-                            <p>{f.answer}</p>
+                            <p>{boldenKnownTerms(f.answer, boldTermsRef.current)}</p>
                             <ReferenceImages images={f.images} />
                             <DebugLogLink debug={f.debug} />
                           </>
