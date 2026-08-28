@@ -351,7 +351,15 @@ export default function BarDeepDiveOverlay({ containerRef, context, onDownloadRe
       {rect && (
         <div
           className="bar-select-rect"
-          style={{ left: rect.left, top: rect.top, width: rect.right - rect.left, height: rect.bottom - rect.top }}
+          style={{
+            // rect is tracked in viewport coordinates (from mouse clientX/Y);
+            // converting to document coordinates here is what lets the box
+            // stay absolute-positioned over the same content on scroll.
+            left: rect.left + window.scrollX,
+            top: rect.top + window.scrollY,
+            width: rect.right - rect.left,
+            height: rect.bottom - rect.top,
+          }}
         />
       )}
       {panel && panelPos && (

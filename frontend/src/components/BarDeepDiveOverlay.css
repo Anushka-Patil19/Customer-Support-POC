@@ -26,7 +26,10 @@
 }
 
 .bar-select-rect {
-  position: fixed;
+  /* absolute (not fixed) so it's pinned to the page content in document
+     coordinates and scrolls along with it, instead of staying put in the
+     viewport while the selected content scrolls away underneath it. */
+  position: absolute;
   z-index: 1200;
   border: 2px dashed var(--purple-500);
   background: rgba(139, 92, 246, 0.1);
