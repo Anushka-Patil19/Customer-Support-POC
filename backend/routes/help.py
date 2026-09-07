@@ -30,6 +30,9 @@ def _call_groq(system_instruction, input_text, json_mode=False):
             {"role": "user", "content": input_text},
         ],
         "model": _MODEL,
+        "temperature": 0.1,
+        "top_p": 0.2,
+        "max_tokens": 900,
     }
     if json_mode:
         kwargs["response_format"] = {"type": "json_object"}
@@ -61,6 +64,40 @@ def _safe_json_loads(text: str) -> dict:
             return json.loads(sanitized)
         except json.JSONDecodeError:
             return {}
+
+
+def _fallback_explanation(page_context: dict, text: str) -> dict:
+    """Keep the panel useful if the model returns malformed or empty JSON."""
+    page_code = (page_context or {}).get("page_code")
+    if page_code == "TSADETL":
+        banner_id = (page_context or {}).get("banner_id")
+        selected_id = re.search(r"\b[A-Z]\d{8}\b", text or "")
+        student_id = selected_id.group(0) if selected_id else banner_id
+        name_match = re.search(r"\b(?:Name\s+)?(Demo Student [A-Za-z ]+)", text or "", re.IGNORECASE)
+        student_name = name_match.group(1).strip() if name_match else "the loaded student"
+        credit_match = re.search(r"Credit Limit\s*(?:\n|:)?\s*(-?\d+(?:\.\d+)?)", text or "", re.IGNORECASE)
+        credit_limit = credit_match.group(1) if credit_match else "the configured amount"
+        hold_text = "AR Hold" if re.search(r"\bAR Hold\b", text or "", re.IGNORECASE) else "no AR hold"
+        identity = f"{student_name} ({student_id})" if student_id else student_name
+        return {
+            "explanation": (
+                f"TSADETL is the Student Account Detail page for {identity}. The selected screen shows "
+                f"a credit limit of {credit_limit} and {hold_text}, along with the Charges/Payments "
+                "transactions and current account balance. "
+                "Use Go to load an ID, Start Over to clear the current account, and the transaction grid "
+                "to review or insert charges and payments."
+            ),
+            "follow_up_questions": [
+                "What does Account Balance mean?",
+                "How do I load another student?",
+                "What does Holds show?",
+                "How are payments applied?",
+            ],
+        }
+    return {
+        "explanation": "This selected area is covered by the available help documentation.",
+        "follow_up_questions": [],
+    }
 
 
 # ── Live SQL dispatch (doc sec 8) -- bound parameters only, never string-interpolated ──
@@ -197,9 +234,37 @@ _LIVE_DATA_RULE = (
     "- When a LIVE DATA block is present, treat it as ground truth about this specific record and "
     "answer using its actual values (e.g. the real active_ind, balance, or code) rather than a generic "
     "description of the concept."
+    "\n- When the selected content includes the student ID field and LIVE DATA contains `banner_id`, state "
+    "the actual ID value explicitly (for example, `D00010001`) and then explain what the field is for; "
+    "do not give only a generic description of the ID field."
     "\n- When a LIVE DATA block includes a balance and its contributing_transactions, always state the "
-    "transaction_count explicitly (e.g. \"across 2 transactions: a $2000.00 TUIT charge and a $500.00 "
-    "CASH payment\") -- never describe the balance without naming how many transactions make it up."
+    "transaction_count explicitly (e.g. \"across 2 transactions: a Rs. 2000.00 TUIT charge and a Rs. "
+    "500.00 CASH payment\") -- never describe the balance without naming how many transactions make it up."
+    "\n- All amounts are in Indian Rupees. Always format them with the \"Rs.\" prefix (e.g. \"Rs. 1650.00\") "
+    "-- never use \"$\", \"USD\", or the word \"dollars\"."
+)
+
+_REPORT_ACTION_RULE = (
+    "- If the question asks to generate, download, export, or get a report/PDF/statement, do not describe "
+    "the file as already produced and do not state or invent its exact file name -- no PDF has been "
+    "created yet at the point you're answering. Instead, in one short sentence tell the user to use the "
+    "Download Report button shown below to get it, and briefly note what it contains (name, hold status, "
+    "itemized transactions, and balance) using the actual LIVE DATA values."
+    "\n- Never say \"Deep Dive panel\", \"Deep Dive\", or other internal UI/tool names -- just call it the "
+    "Download Report button. Never describe the student or account as \"loaded\" -- refer to them plainly "
+    "by name/ID (e.g. \"for D00010001\"), or say \"the account shown\" if no ID is available."
+)
+
+_EXACT_FIELD_MATCH_RULE = (
+    "- STRICT: identify the exact field/label/control name involved (from the selected screen content, "
+    "or from the specific wording of the question) before answering, and answer about THAT one, never a "
+    "different field that merely looks or sounds similar. Two names that share words are still different "
+    "fields unless an excerpt explicitly says otherwise -- e.g. \"Detail Code\" and \"Detail Code "
+    "Description\" are two separate fields, \"Detail Code\" and \"Category\" are two separate fields, and "
+    "so on. If the excerpts contain a chunk whose heading names the exact field, prefer that chunk's "
+    "content over any other chunk, even one about a related field. If no excerpt or live data covers the "
+    "exact field, say plainly that this specific field isn't covered -- do not substitute the explanation "
+    "for a related field instead."
 )
 
 _EXPLAIN_SYSTEM_PROMPT = f"""\
@@ -211,9 +276,14 @@ DATA provided below as ground truth.
 Rules:
 - The selected screen content is always something the user picked from one of these pages, so it is \
 always in scope -- explain it.
+- If the selected content covers several fields or most of the page, treat it as a page-level selection: \
+give a short overview of the page's purpose and major visible sections, then use LIVE DATA for the loaded \
+student's actual values. Do not reduce a full-page selection to only its balance.
+{_EXACT_FIELD_MATCH_RULE}
 - Base your explanation strictly on the provided excerpts and live data. Do not invent behavior that \
 isn't in them.
 {_LIVE_DATA_RULE}
+{_REPORT_ACTION_RULE}
 - Describe behavior in plain, functional terms only -- never mention API endpoints, route paths, backend \
 table/column names, or other implementation-level details, even if they appear in the excerpts.
 - If the excerpts and live data don't clearly cover what was selected, say plainly that this area isn't \
@@ -245,11 +315,16 @@ always about a concept that appears in the excerpts, even if the wording doesn't
 the excerpts for the underlying concept before deciding a question is off-topic.
 - Otherwise, base your answer strictly on the provided excerpts and live data. Do not invent behavior \
 that isn't in them.
+{_EXACT_FIELD_MATCH_RULE}
 {_LIVE_DATA_RULE}
+{_REPORT_ACTION_RULE}
 - Describe behavior in plain, functional terms only -- never mention API endpoints, route paths, backend \
 table/column names, or other implementation-level details, even if they appear in the excerpts.
 - If the question is on-topic but the excerpts/live data don't clearly cover it, say plainly that this \
 isn't covered instead of guessing.
+- Respond in plain text only -- no markdown formatting of any kind (no **bold**, no headers, no bullet/ \
+numbered lists, no backticks). The frontend renders your response as plain text, so markdown syntax would \
+show up literally to the user.
 - If the exact literal text "[SCREENSHOT_AVAILABLE]" appears below in this request's context, a question \
 asking to see or describe what a page looks like IS in scope -- don't refuse it, and briefly say (in your \
 own words, never quoting that text) that a reference screenshot is shown below. If that text does NOT \
@@ -259,6 +334,43 @@ appear below, never mention screenshots or reference images at all, even if the 
 
 _IMAGES_AVAILABLE_NOTE = "[SCREENSHOT_AVAILABLE]"
 
+_PAGE_OVERVIEWS = {
+    "TSADETL": (
+        "TSADETL is the Student Account Detail page. It loads one student's account using the ID field, "
+        "shows the student's name, credit limit, and account hold status, and displays the account's "
+        "Charges/Payments grid. Each transaction row contains the Detail Code, its read-only Description, "
+        "Amount, Balance, and Term. The page also shows the overall Account Balance, supports inserting a "
+        "charge or payment, and provides account and transaction details through the Deep Dive report action."
+    ),
+}
+
+_REPORT_INTENT_RE = re.compile(
+    r"\b(report|download|export|pdf|invoice|statement|excel|spreadsheet|xlsx|csv)\b", re.IGNORECASE
+)
+
+
+def _wants_report(text: str, page_context: dict) -> bool:
+    """True when the user's text/question is asking for the Student Account
+    Detail Report -- only offered on TSADETL, where `context.banner_id` is
+    the signal that a student account is actually loaded to report on."""
+    return bool(page_context.get("banner_id")) and bool(_REPORT_INTENT_RE.search(text))
+
+
+def _report_term_code(debug: dict):
+    """A single term code mentioned in the question (e.g. "report for term
+    202610"), so the report can be scoped to just that term instead of the
+    whole account -- None means "report everything", not "no term exists"."""
+    term_codes = (debug.get("entities_detected") or {}).get("term_codes") or []
+    return term_codes[0] if term_codes else None
+
+
+def _report_detail_code(debug: dict):
+    """A single detail code mentioned in the question (e.g. "report of all
+    the cash detail code"), so the report can be scoped to just that detail
+    code instead of every charge/payment on the account."""
+    detail_codes = (debug.get("entities_detected") or {}).get("detail_codes") or []
+    return detail_codes[0] if detail_codes else None
+
 
 def _build_context(text: str, page_context: dict = None) -> tuple:
     entities = detect_entities(text, page_context)
@@ -266,6 +378,9 @@ def _build_context(text: str, page_context: dict = None) -> tuple:
     chunks = hybrid_search(text, top_k=4)
 
     parts = []
+    page_code = (page_context or {}).get("page_code")
+    if page_code in _PAGE_OVERVIEWS:
+        parts.append(f"Page overview:\n{_PAGE_OVERVIEWS[page_code]}")
     if chunks:
         parts.append(
             "Static help excerpts:\n"
@@ -310,28 +425,55 @@ def explain():
     if not text:
         return jsonify({"error": "Missing text"}), 400
 
+    offer_report = _wants_report(text, page_context)
+
     context, chunks, debug = _build_context(text, page_context)
+    report_term_code = _report_term_code(debug)
+    report_detail_code = _report_detail_code(debug)
     if not context:
         return jsonify({
             "explanation": _OUT_OF_SCOPE_MESSAGE,
             "sections": [],
             "images": [],
             "follow_up_questions": [],
+            "offer_report": offer_report,
+            "report_term_code": report_term_code,
+            "report_detail_code": report_detail_code,
             "debug": debug,
         }), 200
 
     user_prompt = f"Selected screen content:\n\"\"\"\n{text[:2000]}\n\"\"\"\n\n{context}"
 
+    selected_labels = {"ID", "NAME", "CREDIT LIMIT", "HOLDS", "START OVER", "GO", "CHARGES/PAYMENTS"}
+    selected_label_count = sum(1 for label in selected_labels if label.lower() in text.lower())
+    if page_context.get("page_code") == "TSADETL" and (len(text) > 700 or selected_label_count >= 5):
+        result = _fallback_explanation(page_context, text)
+        return jsonify({
+            "explanation": result["explanation"],
+            "sections": [c["heading"] for c in chunks],
+            "images": _collect_images(chunks),
+            "follow_up_questions": result["follow_up_questions"],
+            "offer_report": offer_report,
+            "report_term_code": report_term_code,
+            "report_detail_code": report_detail_code,
+            "debug": debug,
+        }), 200
+
     raw, err = _call_groq(_EXPLAIN_SYSTEM_PROMPT, user_prompt, json_mode=True)
     if err:
         return jsonify({"error": err}), 503
     result = _safe_json_loads(raw)
+    if not result.get("explanation"):
+        result = _fallback_explanation(page_context, text)
 
     return jsonify({
         "explanation": result.get("explanation", ""),
         "sections": [c["heading"] for c in chunks],
         "images": _collect_images(chunks),
         "follow_up_questions": (result.get("follow_up_questions") or [])[:4],
+        "offer_report": offer_report,
+        "report_term_code": report_term_code,
+        "report_detail_code": report_detail_code,
         "debug": debug,
     }), 200
 
@@ -344,12 +486,19 @@ def followup():
     if not question:
         return jsonify({"error": "Missing question"}), 400
 
+    offer_report = _wants_report(question, page_context)
+
     context, chunks, debug = _build_context(question, page_context)
+    report_term_code = _report_term_code(debug)
+    report_detail_code = _report_detail_code(debug)
     if not context:
         return jsonify({
             "answer": _OUT_OF_SCOPE_MESSAGE,
             "sections": [],
             "images": [],
+            "offer_report": offer_report,
+            "report_term_code": report_term_code,
+            "report_detail_code": report_detail_code,
             "debug": debug,
         }), 200
 
@@ -363,5 +512,8 @@ def followup():
         "answer": answer,
         "sections": [c["heading"] for c in chunks],
         "images": _collect_images(chunks),
+        "offer_report": offer_report,
+        "report_term_code": report_term_code,
+        "report_detail_code": report_detail_code,
         "debug": debug,
     }), 200

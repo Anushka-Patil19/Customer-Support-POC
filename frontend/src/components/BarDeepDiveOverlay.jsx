@@ -38,6 +38,21 @@ function rectsIntersect(a, b) {
   return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
 }
 
+// Report button label/title reflect whatever term/detail-code scoping the
+// backend detected in the user's question (e.g. "report for term 202610" or
+// "cash detail code report") -- unscoped falls back to the full account report.
+function reportButtonLabel(termCode, detailCode) {
+  const scope = [termCode && `Term ${termCode}`, detailCode].filter(Boolean).join(" ");
+  return scope ? `Download Student Account Detail Report -- ${scope}` : "Download Student Account Detail Report";
+}
+
+function reportButtonTitle(termCode, detailCode) {
+  const scope = [termCode && `term ${termCode}`, detailCode && `detail code ${detailCode}`].filter(Boolean).join(" and ");
+  return scope
+    ? `Download the Student Account Detail Report scoped to ${scope}, as a formatted PDF`
+    : "Download the Student Account Detail Report -- this student's Charges/Payments transactions as a formatted PDF";
+}
+
 // An element's own text, ignoring text that belongs to nested elements --
 // e.g. for <th>Detail Code<span>*</span></th> this returns "Detail Code",
 // not "Detail Code*" (the "*" is picked up separately when the span itself
@@ -73,6 +88,13 @@ function extractTextInRect(containerEl, rect) {
     // text at every ancestor level.
     const txt = ownText(el);
     if (txt) matches.push(txt);
+
+    // Form controls keep their visible content in `value`, not in a text node.
+    // Include it so selections over fields carry the actual record value.
+    if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) {
+      const value = el.value.trim();
+      if (value) matches.push(value);
+    }
   }
   return [...new Set(matches)].join("\n").slice(0, 4000);
 }
@@ -235,12 +257,14 @@ export default function BarDeepDiveOverlay({ containerRef, context, onDownloadRe
           followUpQuestions: [],
           debug: null,
           showDownloadReport,
+          reportTermCode: null,
+          reportDetailCode: null,
           error: "Nothing selectable was found in that area -- try dragging over some text, a field, or a grid row.",
         });
         return;
       }
 
-      setPanel({ width: panelWidth, loading: true, explanation: "", sections: [], images: [], followUpQuestions: [], debug: null, showDownloadReport, error: null });
+      setPanel({ width: panelWidth, loading: true, explanation: "", sections: [], images: [], followUpQuestions: [], debug: null, showDownloadReport, reportTermCode: null, reportDetailCode: null, error: null });
 
       try {
         const { data } = await api.post("/help/explain", { text, context });
@@ -252,12 +276,14 @@ export default function BarDeepDiveOverlay({ containerRef, context, onDownloadRe
           images: data.images || [],
           followUpQuestions: data.follow_up_questions || [],
           debug: data.debug || null,
-          showDownloadReport,
+          showDownloadReport: showDownloadReport || !!data.offer_report,
+          reportTermCode: data.report_term_code || null,
+          reportDetailCode: data.report_detail_code || null,
           error: null,
         });
       } catch (err) {
         const message = err?.response?.data?.error || "Couldn't get an explanation right now.";
-        setPanel({ width: panelWidth, loading: false, explanation: "", sections: [], images: [], followUpQuestions: [], debug: null, showDownloadReport, error: message });
+        setPanel({ width: panelWidth, loading: false, explanation: "", sections: [], images: [], followUpQuestions: [], debug: null, showDownloadReport, reportTermCode: null, reportDetailCode: null, error: message });
       }
     };
 
@@ -275,13 +301,27 @@ export default function BarDeepDiveOverlay({ containerRef, context, onDownloadRe
     let turnIndex;
     setFollowups((prev) => {
       turnIndex = prev.length;
-      return [...prev, { question, loading: true, answer: "", images: [], debug: null, error: null }];
+      return [
+        ...prev,
+        { question, loading: true, answer: "", images: [], offerReport: false, reportTermCode: null, reportDetailCode: null, debug: null, error: null },
+      ];
     });
     try {
       const { data } = await api.post("/help/followup", { question, context });
       setFollowups((prev) =>
         prev.map((f, i) =>
-          i === turnIndex ? { ...f, loading: false, answer: data.answer, images: data.images || [], debug: data.debug || null } : f
+          i === turnIndex
+            ? {
+                ...f,
+                loading: false,
+                answer: data.answer,
+                images: data.images || [],
+                offerReport: !!data.offer_report,
+                reportTermCode: data.report_term_code || null,
+                reportDetailCode: data.report_detail_code || null,
+                debug: data.debug || null,
+              }
+            : f
         )
       );
     } catch (err) {
@@ -390,10 +430,10 @@ export default function BarDeepDiveOverlay({ containerRef, context, onDownloadRe
                       <button
                         type="button"
                         className="bar-download-report-btn"
-                        onClick={onDownloadReport}
-                        title="Download this student's transactions as an Excel report"
+                        onClick={() => onDownloadReport({ termCode: panel.reportTermCode, detailCode: panel.reportDetailCode })}
+                        title={reportButtonTitle(panel.reportTermCode, panel.reportDetailCode)}
                       >
-                        ⬇ Download Report
+                        ⬇ {reportButtonLabel(panel.reportTermCode, panel.reportDetailCode)}
                       </button>
                     )}
                   </div>
@@ -427,7 +467,19 @@ export default function BarDeepDiveOverlay({ containerRef, context, onDownloadRe
                           <>
                             <p>{boldenKnownTerms(f.answer, boldTermsRef.current)}</p>
                             <ReferenceImages images={f.images} />
-                            <DebugLogLink debug={f.debug} />
+                            <div className="bar-log-actions-row">
+                              <DebugLogLink debug={f.debug} />
+                              {onDownloadReport && f.offerReport && (
+                                <button
+                                  type="button"
+                                  className="bar-download-report-btn"
+                                  onClick={() => onDownloadReport({ termCode: f.reportTermCode, detailCode: f.reportDetailCode })}
+                                  title={reportButtonTitle(f.reportTermCode, f.reportDetailCode)}
+                                >
+                                  ⬇ {reportButtonLabel(f.reportTermCode, f.reportDetailCode)}
+                                </button>
+                              )}
+                            </div>
                           </>
                         )}
                       </div>

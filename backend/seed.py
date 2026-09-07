@@ -15,6 +15,55 @@ def run():
     db = SessionLocal()
     try:
         if db.query(ArCategory).count() > 0:
+            existing_fields = {
+                field_name
+                for (field_name,) in db.query(HelpMetadata.field_name)
+                .filter_by(page_code="TSADETL")
+                .all()
+            }
+            db.add_all(
+                [
+                    HelpMetadata(
+                        page_code="TSADETL", field_name="NAME", topic="Student name",
+                        help_text=(
+                            "Name displays the name of the student loaded by the ID field. For the demo "
+                            "account D00010001, the displayed name is Demo Student One."
+                        ),
+                    ),
+                    HelpMetadata(
+                        page_code="TSADETL", field_name="CREDIT_LIMIT", topic="Credit limit",
+                        help_text=(
+                            "Credit Limit displays the maximum credit amount configured for the loaded "
+                            "student. The demo account has a credit limit of 0."
+                        ),
+                    ),
+                    HelpMetadata(
+                        page_code="TSADETL", field_name="HOLDS", topic="Account holds",
+                        help_text=(
+                            "Holds indicates whether an AR hold is active on the loaded account. It is "
+                            "blank when no hold is present and displays AR Hold when a hold is active."
+                        ),
+                    ),
+                    HelpMetadata(
+                        page_code="TSADETL", field_name="START_OVER", topic="Start Over action",
+                        help_text=(
+                            "Start Over clears the currently loaded student, transactions, balance, and "
+                            "messages so another student ID can be entered."
+                        ),
+                    ),
+                    HelpMetadata(
+                        page_code="TSADETL", field_name="GO", topic="Go action",
+                        help_text=(
+                            "Go loads the student account for the ID entered in the ID field, including "
+                            "the student's name, credit limit, holds, transactions, and balance."
+                        ),
+                    ),
+                ][0:]
+            )
+            for row in list(db.new):
+                if row.field_name in existing_fields:
+                    db.expunge(row)
+            db.commit()
             return
 
         db.add_all(
@@ -60,6 +109,14 @@ def run():
                     term_code="202610", description="Fall 2025", aid_year_code="2526",
                     start_date=date(2025, 8, 25), end_date=date(2025, 12, 12),
                 ),
+                Term(
+                    term_code="202630", description="Summer 2026", aid_year_code="2526",
+                    start_date=date(2026, 5, 11), end_date=date(2026, 8, 7),
+                ),
+                Term(
+                    term_code="202640", description="Fall 2026", aid_year_code="2627",
+                    start_date=date(2026, 8, 24), end_date=date(2026, 12, 11),
+                ),
             ]
         )
 
@@ -79,12 +136,42 @@ def run():
             [
                 ArTransaction(
                     person_key=student_one.person_key, transaction_no=1, detail_code="TUIT",
-                    term_code="202620", entry_amount=2000, signed_amount=2000, open_balance=2000,
+                    term_code="202610", entry_amount=1800, signed_amount=1800, open_balance=1800,
                     original_charge_ind="Y", status_code="A",
                 ),
                 ArTransaction(
                     person_key=student_one.person_key, transaction_no=2, detail_code="CASH",
-                    term_code="202620", entry_amount=500, signed_amount=500, open_balance=500,
+                    term_code="202610", entry_amount=1800, signed_amount=-1800, open_balance=-1800,
+                    original_charge_ind="N", status_code="A",
+                ),
+                ArTransaction(
+                    person_key=student_one.person_key, transaction_no=3, detail_code="TUIT",
+                    term_code="202620", entry_amount=2000, signed_amount=2000, open_balance=2000,
+                    original_charge_ind="Y", status_code="A",
+                ),
+                ArTransaction(
+                    person_key=student_one.person_key, transaction_no=4, detail_code="CASH",
+                    term_code="202620", entry_amount=500, signed_amount=-500, open_balance=-500,
+                    original_charge_ind="N", status_code="A",
+                ),
+                ArTransaction(
+                    person_key=student_one.person_key, transaction_no=5, detail_code="TUIT",
+                    term_code="202630", entry_amount=500, signed_amount=500, open_balance=500,
+                    original_charge_ind="Y", status_code="A",
+                ),
+                ArTransaction(
+                    person_key=student_one.person_key, transaction_no=6, detail_code="CASH",
+                    term_code="202630", entry_amount=500, signed_amount=-500, open_balance=-500,
+                    original_charge_ind="N", status_code="A",
+                ),
+                ArTransaction(
+                    person_key=student_one.person_key, transaction_no=7, detail_code="TUIT",
+                    term_code="202640", entry_amount=250, signed_amount=250, open_balance=250,
+                    original_charge_ind="Y", status_code="A",
+                ),
+                ArTransaction(
+                    person_key=student_one.person_key, transaction_no=8, detail_code="CASH",
+                    term_code="202640", entry_amount=100, signed_amount=-100, open_balance=-100,
                     original_charge_ind="N", status_code="A",
                 ),
             ]
@@ -98,6 +185,53 @@ def run():
                         "The Detail Code identifies the specific charge or payment type applied to a "
                         "student account. It must exist and be active in the detail code control table "
                         "before it can be used here."
+                    ),
+                    source_page_code="TSADETC", source_object_name="POC_AR_DETAIL_CODE",
+                ),
+                HelpMetadata(
+                    page_code="TSADETL", field_name="NAME", topic="Student name",
+                    help_text=(
+                        "Name displays the name of the student loaded by the ID field. For the demo "
+                        "account D00010001, the displayed name is Demo Student One."
+                    ),
+                ),
+                HelpMetadata(
+                    page_code="TSADETL", field_name="CREDIT_LIMIT", topic="Credit limit",
+                    help_text=(
+                        "Credit Limit displays the maximum credit amount configured for the loaded "
+                        "student. The demo account has a credit limit of 0."
+                    ),
+                ),
+                HelpMetadata(
+                    page_code="TSADETL", field_name="HOLDS", topic="Account holds",
+                    help_text=(
+                        "Holds indicates whether an AR hold is active on the loaded account. It is "
+                        "blank when no hold is present and displays AR Hold when a hold is active."
+                    ),
+                ),
+                HelpMetadata(
+                    page_code="TSADETL", field_name="START_OVER", topic="Start Over action",
+                    help_text=(
+                        "Start Over clears the currently loaded student, transactions, balance, and "
+                        "messages so another student ID can be entered."
+                    ),
+                ),
+                HelpMetadata(
+                    page_code="TSADETL", field_name="GO", topic="Go action",
+                    help_text=(
+                        "Go loads the student account for the ID entered in the ID field, including "
+                        "the student's name, credit limit, holds, transactions, and balance."
+                    ),
+                ),
+                HelpMetadata(
+                    page_code="TSADETL", field_name="DETAIL_CODE_DESCRIPTION", topic="Detail Code Description column",
+                    help_text=(
+                        "Detail Code Description is a separate field from Detail Code -- it is a "
+                        "read-only, display-only column on this grid, not something you type into. It "
+                        "automatically shows whatever description text is stored for the Detail Code "
+                        "chosen on that row (e.g. selecting TUIT shows 'Tuition Charge'), looked up live "
+                        "from the detail code control table. Changing the Detail Code immediately changes "
+                        "this column too, since it is a mirrored lookup value, not independent data."
                     ),
                     source_page_code="TSADETC", source_object_name="POC_AR_DETAIL_CODE",
                 ),
@@ -123,6 +257,25 @@ def run():
                         "Type C (Charge) increases the account balance; Type P (Payment) decreases it. "
                         "The sign is applied automatically based on the detail code's type -- it is not "
                         "user-entered."
+                    ),
+                ),
+                HelpMetadata(
+                    page_code="TSADETL", field_name="DOWNLOAD_REPORT", topic="Download Report",
+                    help_text=(
+                        "The Student Account Detail Report is a formatted PDF for the student currently "
+                        "shown on the page. It includes a report number and date, the student's name, ID, "
+                        "and account hold status, an itemized table of Charges/Payments (Term, Detail "
+                        "Code, Description, Amount, Balance for each transaction), and a summary section "
+                        "with the total of all entries and the current Account Balance. It is not a "
+                        "toolbar button on the page itself -- it appears as a 'Download Report' button, "
+                        "either after you drag-select over the student ID field, or after you ask the "
+                        "assistant (via a follow-up or typed question) for a report/download/export -- and "
+                        "only once the account has at least one transaction. If the question names a specific "
+                        "term (e.g. \"report for term 202610\") and/or a specific detail code (e.g. "
+                        "\"cash only\"), the report and its balance are scoped to just that term and/or "
+                        "detail code instead of the whole account. This scoping happens only in how the "
+                        "report is generated from your question -- the Charges/Payments grid on the page "
+                        "itself has no term or detail-code filter control."
                     ),
                 ),
                 HelpMetadata(
@@ -166,6 +319,18 @@ def run():
                         "applied or listed relative to each other; it does not affect whether a detail "
                         "code is valid or active."
                     ),
+                ),
+                HelpMetadata(
+                    page_code="TSADETC", field_name="DESCRIPTION", topic="Description field",
+                    help_text=(
+                        "Description on this page is a required, user-typed field -- the plain-English "
+                        "label for the code being defined here (e.g. 'Tuition Charge' for TUIT). This is "
+                        "a different field from the Detail Code itself, which is the short code, not the "
+                        "label. Whatever is typed here is the source of the text that later appears "
+                        "automatically as the read-only Detail Code Description column wherever this code "
+                        "is used, such as the TSADETL Charges/Payments grid."
+                    ),
+                    target_page_code="TSADETL", target_object_name="POC_AR_TRANSACTION",
                 ),
                 HelpMetadata(
                     page_code="TSADETC", field_name="ACTIVE", topic="Active indicator",

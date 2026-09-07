@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import "jspdf-autotable";
 import api from "../api/axios";
 import BarDeepDiveOverlay from "../components/BarDeepDiveOverlay";
 import { PageTitle } from "../components/HelpPOCHeader";
@@ -70,18 +71,95 @@ export default function TSADETL() {
     if (idInput.trim()) loadAccount(idInput.trim().toUpperCase());
   };
 
-  const handleDownloadReport = () => {
-    const rows = transactions.map((t) => ({
-      "Detail Code": t.detail_code,
-      "Detail Code Description": t.detail_code_description,
-      Amount: t.entry_amount,
-      Balance: t.open_balance,
-      Term: t.term_code,
-    }));
-    const sheet = XLSX.utils.json_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, sheet, "Charges-Payments");
-    XLSX.writeFile(workbook, `TSADETL_${person.banner_id}_Report.xlsx`);
+  const handleDownloadReport = ({ termCode, detailCode } = {}) => {
+    const rows = transactions.filter(
+      (t) => (!termCode || t.term_code === termCode) && (!detailCode || t.detail_code === detailCode)
+    );
+    const isScoped = !!(termCode || detailCode);
+    const reportBalance = isScoped ? rows.reduce((sum, t) => sum + t.open_balance, 0) : balance ?? 0;
+    const scopeLabel = [termCode && `Term ${termCode}`, detailCode && `${detailCode}`].filter(Boolean).join(" -- ");
+    const scopeSuffix = [termCode, detailCode].filter(Boolean).join("_");
+    const scopeSentence = [termCode && `term ${termCode}`, detailCode && `detail code ${detailCode}`]
+      .filter(Boolean)
+      .join(" and ");
+
+    const today = new Date();
+    const reportDate = today.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    const reportNo = `SAR-${person.banner_id}${scopeSuffix ? `-${scopeSuffix}` : ""}-${today.toISOString().slice(0, 10).replace(/-/g, "")}`;
+    // jsPDF's built-in fonts (WinAnsi-encoded) have no glyph for the Rupee
+    // sign (U+20B9) -- it would render as a blank/garbled box -- so the PDF
+    // uses the "Rs." prefix instead, while on-screen text can use the real symbol.
+    const money = (n) => `Rs. ${n.toFixed(2)}`;
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const marginX = 14;
+
+    doc.setFontSize(18);
+    doc.setFont(undefined, "bold");
+    doc.text(scopeLabel ? `Student Account Detail Report -- ${scopeLabel}` : "Student Account Detail Report", marginX, 20);
+
+    doc.setFontSize(10);
+    doc.setFont(undefined, "normal");
+    doc.text(`Report No.: ${reportNo}`, marginX, 30);
+    doc.text(`Report Date: ${reportDate}`, marginX, 36);
+
+    doc.setFont(undefined, "bold");
+    doc.text("Student Name:", marginX, 46);
+    doc.text("Student ID:", marginX, 52);
+    doc.text("Account Hold:", marginX, 58);
+    doc.setFont(undefined, "normal");
+    doc.text(person.display_name || "", marginX + 32, 46);
+    doc.text(person.banner_id, marginX + 32, 52);
+    doc.text(person.hold_ind === "Y" ? "Yes -- AR Hold" : "No", marginX + 32, 58);
+
+    doc.autoTable({
+      startY: 66,
+      margin: { left: marginX, right: marginX },
+      head: [["Term", "Detail Code", "Description", "Amount", "Balance"]],
+      body: rows.map((t) => [
+        t.term_code,
+        t.detail_code,
+        t.detail_code_description,
+        money(t.entry_amount),
+        money(t.open_balance),
+      ]),
+      headStyles: { fillColor: [45, 55, 72] },
+      columnStyles: { 3: { halign: "right" }, 4: { halign: "right" } },
+      styles: { fontSize: 9 },
+    });
+
+    const totalEntries = rows.reduce((sum, t) => sum + t.entry_amount, 0);
+    const summaryStartY = doc.lastAutoTable.finalY + 8;
+    doc.autoTable({
+      startY: summaryStartY,
+      margin: { left: marginX, right: marginX },
+      tableWidth: 90,
+      body: [
+        ["Total Entries", money(totalEntries)],
+        [isScoped ? `${scopeLabel} Balance` : "Account Balance", money(reportBalance)],
+      ],
+      theme: "grid",
+      styles: { fontSize: 10 },
+      columnStyles: { 0: { fontStyle: "bold" }, 1: { halign: "right" } },
+    });
+
+    const notesY = doc.lastAutoTable.finalY + 12;
+    doc.setFont(undefined, "bold");
+    doc.text("Notes", marginX, notesY);
+    doc.setFont(undefined, "normal");
+    doc.setFontSize(9);
+    const notes = doc.splitTextToSize(
+      isScoped
+        ? `This is a system-generated summary of Charges/Payments activity for ${scopeSentence} only, as of the report date. ` +
+            "For questions about a specific charge or payment, contact the Office of Student Accounts."
+        : "This is a system-generated summary of Charges/Payments activity for the account above, as of the report date. " +
+            "For questions about a specific charge or payment, contact the Office of Student Accounts.",
+      pageWidth - marginX * 2
+    );
+    doc.text(notes, marginX, notesY + 6);
+
+    doc.save(`Student_Account_Detail_Report_${person.banner_id}${scopeSuffix ? `_${scopeSuffix}` : ""}.pdf`);
   };
 
   const handleInsert = async (e) => {
@@ -239,7 +317,7 @@ export default function TSADETL() {
 
       <BarDeepDiveOverlay
         containerRef={containerRef}
-        context={person ? { banner_id: person.banner_id } : undefined}
+        context={person ? { banner_id: person.banner_id, page_code: "TSADETL" } : { page_code: "TSADETL" }}
         onDownloadReport={person && transactions.length > 0 ? handleDownloadReport : undefined}
         reportTriggerRef={idFieldRef}
       />
