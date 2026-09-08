@@ -44,6 +44,23 @@ function rectsIntersect(a, b) {
   return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
 }
 
+// Converts a viewport-relative rect (built from clientX/Y) into a
+// document-relative one, ONCE, at the moment it's captured -- by adding the
+// scroll offset at that instant and baking it into the stored numbers.
+// Doing this once (rather than re-adding the *current* window.scrollX/Y
+// every time the box re-renders) is what actually keeps the box glued to
+// the same spot on the page: recomputing against a live scroll offset on
+// every later render made the box drift by however far the page had
+// scrolled since the selection was made.
+function toDocumentRect(rect) {
+  return {
+    left: rect.left + window.scrollX,
+    right: rect.right + window.scrollX,
+    top: rect.top + window.scrollY,
+    bottom: rect.bottom + window.scrollY,
+  };
+}
+
 // Report button label/title reflect whatever term/detail-code scoping the
 // backend detected in the user's question (e.g. "report for term 202610" or
 // "cash detail code report") -- unscoped falls back to the full account report.
@@ -222,12 +239,12 @@ export default function BarDeepDiveOverlay({ containerRef, context, onDownloadRe
       setPanelPos(null);
       setFollowups([]);
       setCustomQuestion("");
-      setRect(stripFromDrag(startRef.current, startRef.current));
+      setRect(toDocumentRect(stripFromDrag(startRef.current, startRef.current)));
     };
 
     const onMouseMove = (e) => {
       if (!draggingRef.current || !startRef.current) return;
-      setRect(stripFromDrag(startRef.current, { x: e.clientX, y: e.clientY }));
+      setRect(toDocumentRect(stripFromDrag(startRef.current, { x: e.clientX, y: e.clientY })));
     };
 
     const onMouseUp = async (e) => {
@@ -407,11 +424,11 @@ export default function BarDeepDiveOverlay({ containerRef, context, onDownloadRe
         <div
           className="bar-select-rect"
           style={{
-            // rect is tracked in viewport coordinates (from mouse clientX/Y);
-            // converting to document coordinates here is what lets the box
-            // stay absolute-positioned over the same content on scroll.
-            left: rect.left + window.scrollX,
-            top: rect.top + window.scrollY,
+            // rect is already in document coordinates (see toDocumentRect) --
+            // that's what lets the box stay put over the same content as the
+            // page scrolls, instead of drifting on the next re-render.
+            left: rect.left,
+            top: rect.top,
             width: rect.right - rect.left,
             height: rect.bottom - rect.top,
           }}

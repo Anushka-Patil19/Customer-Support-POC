@@ -255,6 +255,17 @@ _REPORT_ACTION_RULE = (
     "by name/ID (e.g. \"for D00010001\"), or say \"the account shown\" if no ID is available."
 )
 
+_ANSWER_ORDER_RULE = (
+    "- Lead with the selected content itself, not a generic definition of its field/category. Open by "
+    "stating what THIS specific selected value/row/field actually is, using its real live-data details "
+    "where available (e.g. \"This row's Detail Code is TUIT -- a Rs. 2000.00 tuition charge.\"), not a "
+    "textbook description of the concept in general. Only after that first sentence, if it genuinely adds "
+    "value, may you add ONE short clause of background (e.g. that the field is read-only, or the code's "
+    "category) -- keep it brief, don't turn it into a second explanation. Never open the answer with a "
+    "generic \"Detail Code is a read-only field that...\" style definition before addressing what was "
+    "actually selected."
+)
+
 _EXACT_FIELD_MATCH_RULE = (
     "- STRICT: identify the exact field/label/control name involved (from the selected screen content, "
     "or from the specific wording of the question) before answering, and answer about THAT one, never a "
@@ -279,6 +290,7 @@ always in scope -- explain it.
 - If the selected content covers several fields or most of the page, treat it as a page-level selection: \
 give a short overview of the page's purpose and major visible sections, then use LIVE DATA for the loaded \
 student's actual values. Do not reduce a full-page selection to only its balance.
+{_ANSWER_ORDER_RULE}
 {_EXACT_FIELD_MATCH_RULE}
 - Base your explanation strictly on the provided excerpts and live data. Do not invent behavior that \
 isn't in them.
@@ -315,6 +327,7 @@ always about a concept that appears in the excerpts, even if the wording doesn't
 the excerpts for the underlying concept before deciding a question is off-topic.
 - Otherwise, base your answer strictly on the provided excerpts and live data. Do not invent behavior \
 that isn't in them.
+{_ANSWER_ORDER_RULE}
 {_EXACT_FIELD_MATCH_RULE}
 {_LIVE_DATA_RULE}
 {_REPORT_ACTION_RULE}
