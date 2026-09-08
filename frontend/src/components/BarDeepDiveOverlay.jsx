@@ -8,6 +8,12 @@ const VERTICAL_DEAD_ZONE = 20; // small vertical wobble below this is ignored
 const VERTICAL_PADDING = 3; // breathing room once a real vertical drag is detected
 const VIEWPORT_MARGIN = 16;
 const CHAT_PANEL_WIDTH = 400;
+// Mirrors the CSS `max-height: min(560px, calc(100vh - 32px))` on
+// .bar-explain-panel -- used to anchor the panel's initial top position
+// against its worst-case (fully grown) height, so it doesn't visibly jump
+// upward later as loading gives way to an explanation, then follow-ups,
+// then chat answers.
+const MAX_PANEL_HEIGHT = 560;
 
 // Horizontal movement always grows the selection. Vertical movement only
 // grows it once it exceeds a small dead zone -- so accidental hand wobble
@@ -106,6 +112,10 @@ function extractTextInRect(containerEl, rect) {
 // inside the answer text.
 const BOLD_FONT_WEIGHT = 600;
 
+// Banner detail codes that should always read as bold in chat answers,
+// regardless of what happens to be bold on the current screen.
+const ALWAYS_BOLD_TERMS = ["TUIT", "CASH"];
+
 function collectBoldTerms(containerEl) {
   const seen = new Set();
   const terms = [];
@@ -184,17 +194,20 @@ export default function BarDeepDiveOverlay({ containerRef, context, onDownloadRe
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Keep the panel fully on-screen vertically as its content grows (loading
-  // -> explanation -> follow-up chips -> answer) -- pull it up if it now runs
-  // past the bottom of the viewport, instead of leaving part of it unreachable.
+  // Settle the panel's vertical position once, right as its first real
+  // answer replaces the loading spinner -- reserve room for the panel's
+  // worst-case (fully grown) height rather than its current height, so
+  // later growth from follow-up chips and chat answers (which only ever
+  // scrolls internally past that cap, per .bar-explain-panel's max-height)
+  // never has to move the panel again mid-conversation.
   useEffect(() => {
-    if (!panel || !panelPos || !panelRef.current) return;
-    const height = panelRef.current.getBoundingClientRect().height;
-    const maxTop = Math.max(VIEWPORT_MARGIN, window.innerHeight - height - VIEWPORT_MARGIN);
+    if (!panel || panel.loading || !panelPos) return;
+    const maxPanelHeight = Math.min(MAX_PANEL_HEIGHT, window.innerHeight - VIEWPORT_MARGIN * 2);
+    const maxTop = Math.max(VIEWPORT_MARGIN, window.innerHeight - maxPanelHeight - VIEWPORT_MARGIN);
     if (panelPos.top > maxTop) {
       setPanelPos((p) => (p ? { ...p, top: maxTop } : p));
     }
-  }, [panel, panelPos, followups]);
+  }, [panel?.loading]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -245,7 +258,9 @@ export default function BarDeepDiveOverlay({ containerRef, context, onDownloadRe
       const triggerEl = reportTriggerRef?.current;
       const showDownloadReport = !!(triggerEl && rectsIntersect(finalRect, triggerEl.getBoundingClientRect()));
 
-      boldTermsRef.current = collectBoldTerms(container);
+      boldTermsRef.current = [...new Set([...ALWAYS_BOLD_TERMS, ...collectBoldTerms(container)])].sort(
+        (a, b) => b.length - a.length
+      );
       const text = extractTextInRect(container, finalRect);
       if (!text) {
         setPanel({
