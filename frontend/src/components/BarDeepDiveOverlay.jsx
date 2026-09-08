@@ -129,9 +129,9 @@ function extractTextInRect(containerEl, rect) {
 // inside the answer text.
 const BOLD_FONT_WEIGHT = 600;
 
-// Banner detail codes that should always read as bold in chat answers,
-// regardless of what happens to be bold on the current screen.
-const ALWAYS_BOLD_TERMS = ["TUIT", "CASH"];
+// Banner detail codes (and their descriptions) that should always read as
+// bold in chat answers, regardless of what happens to be bold on screen.
+const ALWAYS_BOLD_TERMS = ["TUIT", "CASH", "Tuition Charge", "Cash Payment"];
 
 function collectBoldTerms(containerEl) {
   const seen = new Set();
