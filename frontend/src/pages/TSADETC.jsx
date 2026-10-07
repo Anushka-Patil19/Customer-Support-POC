@@ -20,6 +20,7 @@ export default function TSADETC() {
   const [inserting, setInserting] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [banner, setBanner] = useState(null);
+  const [customizing, setCustomizing] = useState(null); // { code, description, text } while the customize box is open
 
   const load = () => {
     api.get("/detail-codes").then(({ data }) => setDetailCodes(data));
@@ -50,6 +51,18 @@ export default function TSADETC() {
       load();
     } catch (err) {
       setBanner({ type: "error", text: err?.response?.data?.error || "Could not delete detail code." });
+    }
+  };
+
+  const handleSaveCustomHelp = async () => {
+    if (!customizing) return;
+    setBanner(null);
+    try {
+      await api.put(`/detail-codes/${customizing.code}/custom-help`, { help_text: customizing.text });
+      setCustomizing(null);
+      setBanner({ type: "info", text: `Customized help saved for ${customizing.code}.` });
+    } catch (err) {
+      setBanner({ type: "error", text: err?.response?.data?.error || "Could not save customized help." });
     }
   };
 
@@ -121,7 +134,16 @@ export default function TSADETC() {
                   onClick={() => setSelected(d.detail_code)}
                 >
                   <td>{d.active_ind === "N" ? <span className="grid-inactive">{d.detail_code}</span> : d.detail_code}</td>
-                  <td>{d.description}</td>
+                  <td className="grid-editable">
+                    {d.description}
+                    <button className="grid-edit-btn" title="Customize help text"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCustomizing({ code: d.detail_code, description: d.description, text: "" });
+                      }}>
+                      &#9998;
+                    </button>
+                  </td>
                   <td>{d.type_code}</td>
                   <td>{d.category_code}</td>
                   <td>{String(d.priority_no).padStart(3, "0")}</td>
@@ -137,6 +159,26 @@ export default function TSADETC() {
           <span>Record {detailCodes.length === 0 ? 0 : 1} of {detailCodes.length}</span>
         </div>
       </div>
+
+      {customizing && (
+        <div className="grid-modal-backdrop" onClick={() => setCustomizing(null)}>
+          <div className="grid-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="grid-modal-title">
+              Customize help - {customizing.code} ({customizing.description})
+            </div>
+            <textarea autoFocus rows={4} value={customizing.text}
+              placeholder="e.g. This is the cash receipt given by the user"
+              onChange={(e) => setCustomizing({ ...customizing, text: e.target.value })}
+              onKeyDown={(e) => e.key === "Escape" && setCustomizing(null)} />
+            <div className="grid-modal-actions">
+              <button className="grid-toolbar-btn" onClick={() => setCustomizing(null)}>Cancel</button>
+              <button className="grid-toolbar-btn" disabled={!customizing.text.trim()} onClick={handleSaveCustomHelp}>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <BarDeepDiveOverlay containerRef={containerRef} />
     </div>

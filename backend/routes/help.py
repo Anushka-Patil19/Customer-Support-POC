@@ -7,7 +7,7 @@ from sqlalchemy import func
 
 from config import Config
 from database import SessionLocal
-from models import ArCategory, ArDetailCode, ArTransaction, Person
+from models import ArCategory, ArDetailCode, ArTransaction, HelpMetadata, Person
 from utils.entity_detect import detect_entities
 from utils.help_kb import hybrid_search
 
@@ -32,7 +32,10 @@ def _call_groq(system_instruction, input_text, json_mode=False):
         "model": _MODEL,
         "temperature": 0.1,
         "top_p": 0.2,
-        "max_tokens": 900,
+        # gpt-oss is a reasoning model: its thinking shares this budget, so
+        # keep reasoning low and leave headroom or JSON mode can come back empty.
+        "max_tokens": 1500,
+        "reasoning_effort": "low",
     }
     if json_mode:
         kwargs["response_format"] = {"type": "json_object"}
@@ -225,6 +228,16 @@ def _live_context(entities: dict) -> tuple:
             result = _detail_code_usage_context(db, dc, queries)
             if result:
                 ctx.append(f"LIVE DATA -- detail code {dc} record and usage: {json.dumps(result)}")
+
+        # User-written L help for a detected detail code is always passed in,
+        # not left to search ranking, so it can't be crowded out of the top_k.
+        for dc in entities["detail_codes"]:
+            custom = db.query(HelpMetadata).filter_by(
+                block_code="TBBDETC", field_name="TBBDETC_DESC", indicator="L",
+                topic=f"Detail code {dc} description", active_ind="Y",
+            ).first()
+            if custom:
+                ctx.append(f"DETAIL CODE MEANING -- {dc}: {custom.help_text}")
     finally:
         db.close()
     return ctx, queries
@@ -242,6 +255,14 @@ _LIVE_DATA_RULE = (
     "500.00 CASH payment\") -- never describe the balance without naming how many transactions make it up."
     "\n- All amounts are in Indian Rupees. Always format them with the \"Rs.\" prefix (e.g. \"Rs. 1650.00\") "
     "-- never use \"$\", \"USD\", or the word \"dollars\"."
+)
+
+_CUSTOM_HELP_RULE = (
+    "- When a DETAIL CODE MEANING block is present for a detail code, it is the organization's own "
+    "explanation of that code and takes precedence over generic excerpts: whenever that detail code is "
+    "part of the selection or question, always include what it says in the answer (faithfully, in plain "
+    "words), alongside the live data. State it directly as what the code is (e.g. \"CASH is a cash "
+    "receipt for ...\") without describing it as a note, meaning, or where it came from."
 )
 
 _REPORT_ACTION_RULE = (
@@ -295,6 +316,7 @@ student's actual values. Do not reduce a full-page selection to only its balance
 - Base your explanation strictly on the provided excerpts and live data. Do not invent behavior that \
 isn't in them.
 {_LIVE_DATA_RULE}
+{_CUSTOM_HELP_RULE}
 {_REPORT_ACTION_RULE}
 - Describe behavior in plain, functional terms only -- never mention API endpoints, route paths, backend \
 table/column names, or other implementation-level details, even if they appear in the excerpts.
@@ -330,6 +352,7 @@ that isn't in them.
 {_ANSWER_ORDER_RULE}
 {_EXACT_FIELD_MATCH_RULE}
 {_LIVE_DATA_RULE}
+{_CUSTOM_HELP_RULE}
 {_REPORT_ACTION_RULE}
 - Describe behavior in plain, functional terms only -- never mention API endpoints, route paths, backend \
 table/column names, or other implementation-level details, even if they appear in the excerpts.

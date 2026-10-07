@@ -124,7 +124,8 @@ VALUES (
     8, 'CASH', '202640', 100, -100, -100, 'N', 'A'
 );
 
--- Help metadata (RAG facts / lineage) referenced by the TSADETL deep-dive
+-- Help metadata (RAG facts / lineage) referenced by the TSADETL deep-dive.
+-- All seeded rows are baseline (indicator defaults to 'B'); L rows are created by in-app edits.
 INSERT INTO poc_help_metadata
     (page_code, field_name, topic, help_text, source_page_code, source_object_name)
 VALUES (

@@ -52,6 +52,10 @@ _SPARSE_VECTOR = "sparse"
 _kb = None
 
 
+def _help_key(row) -> tuple:
+    return (row.page_code, row.block_code, row.field_name, row.topic)
+
+
 def _load_kb() -> dict:
     global _kb
     if _kb is not None:
@@ -60,10 +64,16 @@ def _load_kb() -> dict:
     db = SessionLocal()
     try:
         rows = db.query(HelpMetadata).filter_by(active_ind="Y").all()
+        # A local (L) customisation overrides its baseline (B) row: the B row
+        # stays in the DB as the original, but only the L text is indexed.
+        overridden = {_help_key(r) for r in rows if r.indicator == "L"}
+        rows = [r for r in rows if r.indicator == "L" or _help_key(r) not in overridden]
         chunks = [
             {
                 "heading": f"{r.page_code}.{r.field_name or r.topic}",
-                "text": r.help_text,
+                # User-written L text is free-form, so prefix the topic (which
+                # names the detail code) to keep it retrievable and attributable.
+                "text": f"{r.topic}: {r.help_text}" if r.indicator == "L" else r.help_text,
                 "page_code": r.page_code,
                 "source": "help_metadata",
                 "images": [],

@@ -207,6 +207,7 @@ class HelpMetadata(Base):
 
     help_id = Column(Integer, primary_key=True, autoincrement=True)
     page_code = Column(String(8), nullable=False)
+    block_code = Column(String(30))
     field_name = Column(String(60))
     topic = Column(String(100), nullable=False)
     help_text = Column(Text, nullable=False)
@@ -214,6 +215,12 @@ class HelpMetadata(Base):
     source_object_name = Column(String(30))
     target_page_code = Column(String(8))
     target_object_name = Column(String(30))
+    # B = baseline (original text), L = local (user-customised via edit). When
+    # both exist for the same page/block/field/topic, the KB uses only the L row.
+    indicator = Column(String(1), nullable=False, default="B", server_default="B")
     active_ind = Column(String(1), nullable=False, default="Y")
 
-    __table_args__ = (CheckConstraint("active_ind IN ('Y','N')", name="ck_poc_help_active"),)
+    __table_args__ = (
+        CheckConstraint("active_ind IN ('Y','N')", name="ck_poc_help_active"),
+        CheckConstraint("indicator IN ('B','L')", name="ck_poc_help_indicator"),
+    )

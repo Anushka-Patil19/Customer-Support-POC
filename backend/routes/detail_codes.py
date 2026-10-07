@@ -1,9 +1,35 @@
 from flask import Blueprint, jsonify, request
 
 from database import SessionLocal
-from models import ArCategory, ArDetailCode, ArTransaction
+from models import ArCategory, ArDetailCode, ArTransaction, HelpMetadata
+from utils.help_kb import reset_kb
 
 detail_codes_bp = Blueprint("detail_codes", __name__)
+
+# Help-metadata location for a detail code's description on TSADETC
+# (Banner block TBBDETC); one B/L row pair per code, keyed by topic.
+_DESC_PAGE = "TSADETC"
+_DESC_BLOCK = "TBBDETC"
+_DESC_FIELD = "TBBDETC_DESC"
+
+
+def _desc_topic(code):
+    return f"Detail code {code} description"
+
+
+def _desc_help_rows(db, code, indicator):
+    return db.query(HelpMetadata).filter_by(
+        page_code=_DESC_PAGE, block_code=_DESC_BLOCK, field_name=_DESC_FIELD,
+        topic=_desc_topic(code), indicator=indicator,
+    ).first()
+
+
+def _baseline_text(code, original):
+    return (
+        f"Detail code {code} has the baseline (original) description '{original}' on "
+        f"TSADETC. This text is shown in the Detail Code Description column wherever "
+        f"{code} is used, such as the TSADETL Charges/Payments grid."
+    )
 
 
 @detail_codes_bp.get("")
@@ -67,6 +93,52 @@ def create_detail_code():
         db.add(row)
         db.commit()
         return jsonify(row.to_dict()), 201
+    finally:
+        db.close()
+
+
+@detail_codes_bp.put("/<code>/custom-help")
+def save_custom_help(code):
+    """Saves user-written help text for a detail code as an L (local) help
+    row. The detail code's own description is never changed. The first save
+    also records the original description as a B (baseline) row; the KB then
+    answers from the L text, and the B row stays as the untouched original."""
+    code = code.strip().upper()
+    help_text = ((request.get_json(silent=True) or {}).get("help_text") or "").strip()
+    if not help_text:
+        return jsonify({"error": "Customized text is required."}), 400
+
+    db = SessionLocal()
+    try:
+        row = db.query(ArDetailCode).filter_by(detail_code=code).first()
+        if not row:
+            return jsonify({"error": "Detail code not found."}), 404
+
+        if not _desc_help_rows(db, code, "B"):
+            db.add(
+                HelpMetadata(
+                    page_code=_DESC_PAGE, block_code=_DESC_BLOCK, field_name=_DESC_FIELD,
+                    topic=_desc_topic(code), indicator="B",
+                    help_text=_baseline_text(code, row.description),
+                    source_page_code=_DESC_PAGE, source_object_name="POC_AR_DETAIL_CODE",
+                )
+            )
+
+        local = _desc_help_rows(db, code, "L")
+        if local:
+            local.help_text = help_text
+        else:
+            db.add(
+                HelpMetadata(
+                    page_code=_DESC_PAGE, block_code=_DESC_BLOCK, field_name=_DESC_FIELD,
+                    topic=_desc_topic(code), indicator="L", help_text=help_text,
+                    source_page_code=_DESC_PAGE, source_object_name="POC_AR_DETAIL_CODE",
+                )
+            )
+
+        db.commit()
+        reset_kb()
+        return jsonify({"status": "saved"})
     finally:
         db.close()
 

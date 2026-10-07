@@ -34,6 +34,22 @@ def create_tables():
             conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {Config.DB_SCHEMA}"))
 
     Base.metadata.create_all(bind=engine)
+    _add_missing_help_columns()
+
+
+def _add_missing_help_columns():
+    """create_all never alters an existing table, so DBs created before
+    block_code/indicator existed get them added here (existing rows -> B)."""
+    from sqlalchemy import inspect, text
+
+    existing = {c["name"] for c in inspect(engine).get_columns("poc_help_metadata")}
+    with engine.begin() as conn:
+        if "block_code" not in existing:
+            conn.execute(text("ALTER TABLE poc_help_metadata ADD COLUMN block_code VARCHAR(30)"))
+        if "indicator" not in existing:
+            conn.execute(
+                text("ALTER TABLE poc_help_metadata ADD COLUMN indicator VARCHAR(1) NOT NULL DEFAULT 'B'")
+            )
 
 
 def get_db():

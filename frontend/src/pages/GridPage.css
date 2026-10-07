@@ -93,6 +93,60 @@
   background: var(--purple-100);
 }
 
+.grid-edit-btn {
+  visibility: hidden;
+  margin-left: 6px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.grid-editable:hover .grid-edit-btn {
+  visibility: visible;
+}
+
+.grid-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.grid-modal {
+  width: min(480px, calc(100vw - 32px));
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.grid-modal-title {
+  font-weight: 700;
+}
+
+.grid-modal textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px;
+  font: inherit;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  resize: vertical;
+}
+
+.grid-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .grid-required {
   color: #dc2626;
   margin-left: 2px;
